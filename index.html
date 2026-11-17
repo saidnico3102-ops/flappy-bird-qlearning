@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Agente Q-Learning · Flappy Bird</title>
+<style>
+:root{--bg:#f3f5fb;--card:#fff;--ink:#14213d;--mut:#5d6a8a;--line:#e0e5f1;--ok:#10b981;--btn:#14213d;--btnt:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1322;--card:#161e35;--ink:#eef1fb;--mut:#9ba7c8;--line:#27314f;--btn:#f59e0b;--btnt:#1a1200;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0d1322;--card:#161e35;--ink:#eef1fb;--mut:#9ba7c8;--line:#27314f;--btn:#f59e0b;--btnt:#1a1200;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.w{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:clamp(22px,4vw,32px);margin:0 0 4px}.sub{color:var(--mut);margin:0 0 20px}
+.g{display:grid;grid-template-columns:minmax(0,330px) minmax(0,1fr);gap:16px;align-items:start}
+@media(max-width:820px){.g{grid-template-columns:minmax(0,1fr)}}
+.c{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
+.c h2{font-size:15px;margin:0 0 10px}
+canvas{display:block;max-width:100%;height:auto;border-radius:12px}
+.seg{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}
+button,select,.fl{font:inherit;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:7px 12px;cursor:pointer}
+button.on,button.p{background:var(--btn);color:var(--btnt);border-color:var(--btn)}
+.st{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px}
+.st div{background:var(--bg);border-radius:10px;padding:8px 10px}
+.st b{display:block;font-size:20px}.st span,.m{color:var(--mut);font-size:12.5px}
+.bar{height:8px;background:var(--line);border-radius:9px;overflow:hidden;margin:10px 0}
+.bar i{display:block;height:100%;width:0;background:var(--ok)}
+.ov{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px}
+td,th{padding:5px 8px;border-bottom:1px solid var(--line);text-align:right}th:first-child,td:first-child{text-align:left}
+input[type=range]{width:100%}input[type=number]{font:inherit;width:90px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+</style></head><body><div class="w">
+<h1>🐦 Agente para Flappy Bird con Q-Learning</h1>
+<p class="sub">UPAO · IA Principios y Técnicas · Demostración del despliegue (Sección VII)</p>
+<div class="g">
+<div>
+ <div class="c"><h2>Partida en vivo</h2>
+  <canvas id="cv" width="288" height="512" style="width:100%;max-width:330px"></canvas>
+  <div class="seg" id="modes"><button data-m="agent" class="on">🤖 Agente</button><button data-m="human">🕹️ Humano</button><button data-m="random">🎲 Aleatorio</button></div>
+  <div class="seg"><label class="m">Velocidad <select id="spd"><option>1</option><option>2</option><option>4</option></select></label><span class="m" id="hint">El agente juega con su Q-Table actual (política greedy).</span></div>
+  <div class="st"><div><b id="sc">0</b><span>Puntaje</span></div><div><b id="bs">0</b><span>Mejor sesión</span></div></div>
+ </div>
+</div>
+<div>
+ <div class="c"><h2>Entrenamiento en el navegador</h2>
+  <p class="m" style="margin-top:0">Misma configuración del informe: α = 0.10, γ = 0.95, ε de 1.0 a 0.01 (decay 0.995), Q₀ = 2.0, semilla 42, validación greedy cada 500 episodios.</p>
+  <div class="seg"><label class="m">Episodios <input type="number" id="nIn" value="10000" min="500" step="500"></label>
+   <button class="p" id="bT">▶ Entrenar</button><button id="bR">↺ Reiniciar Q-Table</button></div>
+  <div class="bar"><i id="pb"></i></div>
+  <div class="st"><div><b id="ep">0</b><span>Episodio</span></div><div><b id="eps">1.00</b><span>ε</span></div><div><b id="qm">—</b><span>Q medio</span></div><div><b id="vis">0 / 3600</b><span>Estados visitados</span></div></div>
+  <canvas id="ch" width="640" height="200" style="width:100%;margin-top:12px"></canvas>
+  <p class="m"><span style="color:#f59e0b">━</span> puntaje de entrenamiento (media por 100 ep.) &nbsp; <span style="color:#10b981">━</span> validación greedy (50 ep.)</p>
+  <p class="m" id="vl">Sin validaciones todavía.</p>
+ </div>
+ <div class="c"><h2>Evaluación y Q-Table</h2>
+  <div class="seg"><button class="p" id="bE">Evaluar: 200 ep., semillas 10000–10199</button>
+   <label class="fl">📂 Cargar Q-Table<input type="file" id="fi" accept=".npy,.json" hidden></label></div>
+  <p class="m" id="src">Origen: Q-Table inicial optimista (Q₀ = 2.0).</p>
+  <div class="ov"><table id="tb"><tr><th>Agente</th><th>Media</th><th>Mediana</th><th>Mín.</th><th>Máx.</th><th>Superv.</th></tr></table></div>
+  <p class="m">Para ver tu agente del informe, carga qtable_flappy.npy (forma 15×20×12×2, float64) generado en el cuaderno.</p>
+ </div>
+ <div class="c"><h2>Interpretabilidad: preferencia de acción</h2>
+  <canvas id="hm" width="320" height="192" style="width:100%;max-width:320px"></canvas>
+  <label class="m">Bin de dx: <b id="dxl">1</b> (0 = tubo muy cerca)<input type="range" id="dxs" min="0" max="14" value="1"></label>
+  <p class="m">Eje horizontal: dy (izquierda = pájaro debajo de la abertura, derecha = encima). Eje vertical: velocidad (arriba = ascendiendo). 🟥 prefiere saltar · 🟦 prefiere no saltar · gris = no visitado.</p>
+ </div>
+</div></div></div>
+<script>
+const W=288,H=512,GR=400,BX=60,BR=12,GV=1,FL=-9,VM=10,PW=52,PS=4,SP=180,GAP=100,$=i=>document.getElementById(i);
+const rng=s=>()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+/* Mersenne Twister idéntico al de Python (random.Random(seed).randint), para reproducir las semillas del cuaderno */
+function mt(seed){const N=624,m=new Uint32Array(N),key=[seed>>>0];let i=1,j=0,p=N;m[0]=19650218;
+ for(let k=1;k<N;k++){const s=m[k-1]^(m[k-1]>>>30);m[k]=(Math.imul(1812433253,s)+k)>>>0}
+ for(let k=N;k;k--){const s=m[i-1]^(m[i-1]>>>30);m[i]=((m[i]^Math.imul(s,1664525))+key[j]+j)>>>0;i++;j++;if(i>=N){m[0]=m[N-1];i=1}if(j>=key.length)j=0}
+ for(let k=N-1;k;k--){const s=m[i-1]^(m[i-1]>>>30);m[i]=((m[i]^Math.imul(s,1566083941))-i)>>>0;i++;if(i>=N){m[0]=m[N-1];i=1}}
+ m[0]=0x80000000;
+ return()=>{if(p>=N){for(let k=0;k<N;k++){const y=(m[k]&0x80000000)|(m[(k+1)%N]&0x7fffffff);m[k]=m[(k+397)%N]^(y>>>1)^((y&1)?0x9908b0df:0)}p=0}
+  let y=m[p++];y^=y>>>11;y^=(y<<7)&0x9d2c5680;y^=(y<<15)&0xefc60000;y^=y>>>18;return y>>>0}}
+class Env{constructor(s){this.g=mt(s);this.y=256;this.vy=0;this.score=0;this.pipes=[{x:W+40,c:this.gap(),p:0}];this.fill()}
+ gap(){let r;do r=this.g()>>>24;while(r>=221);return 90+r}
+ fill(){let l=this.pipes[this.pipes.length-1];while(l.x<W){l={x:l.x+SP,c:this.gap(),p:0};this.pipes.push(l)}}
+ obs(){const p=this.pipes.find(p=>p.x+PW>=BX-BR);return[Math.max(0,p.x-BX),p.c-this.y,-this.vy]}
+ step(a){this.vy=a?FL:Math.min(this.vy+GV,VM);this.y+=this.vy;let rw=.1,d=false;
+  for(const p of this.pipes){p.x-=PS;
+   if(BX+BR>p.x&&BX-BR<p.x+PW&&(this.y-BR<p.c-GAP/2||this.y+BR>p.c+GAP/2))d=true}
+  if(this.y+BR>GR||this.y-BR<0)d=true;
+  if(!d)for(const p of this.pipes)if(!p.p&&p.x+PW<BX-BR){p.p=1;this.score++;rw+=1}
+  while(this.pipes[0].x+PW<0)this.pipes.shift();this.fill();return[this.obs(),d?-1:rw,d]}}
+const clip=(v,a,b)=>v<a?a:v>b?b:v;
+const disc=o=>[Math.min(14,clip(o[0]/288,0,1)*15|0),Math.min(19,(clip(o[1]/128,-1,1)+1)/2*20|0),Math.min(11,(clip(o[2]/10,-1,1)+1)/2*12|0)];
+const idx=s=>((s[0]*20+s[1])*12+s[2])*2;
+let Q,visits,T,tr,SRC;
+const greedy=i=>Q[i+1]>Q[i]?1:0;
+function run(seed,eps,learn,max,r){const e=new Env(seed);let s=idx(disc(e.obs())),d=false;
+ for(let t=0;t<max;t++){const a=r()<eps?(r()<.5?1:0):greedy(s);const[o,rw,dn]=e.step(a);const j=idx(disc(o));
+  if(learn){const g=dn?rw:rw+.95*Math.max(Q[j],Q[j+1]);Q[s+a]+=.1*(g-Q[s+a]);visits[s/2]++}
+  s=j;if(dn){d=true;break}}return[e.score,!d]}
+function resetAll(){Q=new Float64Array(7200).fill(2);visits=new Uint32Array(3600);tr=rng(42);
+ T={run:false,ep:0,N:10000,eps:1,hist:[],val:[],best:-1,bestQ:null,bestEp:0,sum:0,cnt:0};SRC='Q-Table inicial optimista (Q₀ = 2.0).';$('bT').textContent='▶ Entrenar';$('vl').textContent='Sin validaciones todavía.';ui()}
+function tick(){if(!T.run)return;const t0=performance.now();
+ while(T.ep<T.N&&performance.now()-t0<14){const sc=run((tr()*1e9)|0,T.eps,true,5000,tr)[0];T.ep++;T.eps=Math.max(.01,Math.pow(.995,T.ep));
+  T.sum+=sc;if(++T.cnt===100){T.hist.push(T.sum/100);T.sum=0;T.cnt=0}
+  if(T.ep%500===0){let s=0;for(let k=0;k<50;k++)s+=run(20000+k,0,false,5000,Math.random)[0];s/=50;T.val.push([T.ep,s]);
+   if(s>T.best){T.best=s;T.bestQ=Q.slice();T.bestEp=T.ep}
+   $('vl').textContent=`Validación en el episodio ${T.ep}: ${s.toFixed(1)} · mejor checkpoint: episodio ${T.bestEp} (${T.best.toFixed(1)})`}}
+ if(T.ep>=T.N){T.run=false;Q=T.bestQ.slice();SRC=`Mejor checkpoint del entrenamiento en el navegador (episodio ${T.bestEp}).`;$('bT').textContent='▶ Entrenar de nuevo'}
+ ui();if(T.run)requestAnimationFrame(tick)}
+function ui(){let s=0,n=0;for(let i=0;i<3600;i++)if(visits[i]){n++;s+=Q[2*i]+Q[2*i+1]}
+ $('ep').textContent=T.ep.toLocaleString('es-PE');$('eps').textContent=T.eps.toFixed(2);$('qm').textContent=n?(s/(2*n)).toFixed(2):'—';
+ $('vis').textContent=(n||'0')+' / 3600';$('pb').style.width=(T.ep/T.N*100)+'%';$('src').textContent='Origen: '+SRC;chart();heat()}
+function chart(){const c=$('ch').getContext('2d'),w=640,h=200,css=getComputedStyle(document.documentElement);c.clearRect(0,0,w,h);
+ const mx=Math.max(10,...T.hist,...T.val.map(v=>v[1]))*1.1,X=e=>34+e/T.N*(w-44),Y=v=>h-20-v/mx*(h-30);
+ c.strokeStyle=css.getPropertyValue('--line');c.fillStyle=css.getPropertyValue('--mut');c.font='11px system-ui';c.lineWidth=1;
+ for(let k=0;k<=4;k++){const y=Y(mx*k/4);c.beginPath();c.moveTo(34,y);c.lineTo(w-10,y);c.stroke();c.fillText((mx*k/4).toFixed(0),4,y+4)}
+ c.fillText('episodios →',w-80,h-4);c.lineWidth=2;
+ c.strokeStyle='#f59e0b';c.beginPath();T.hist.forEach((v,i)=>{const x=X((i+1)*100);i?c.lineTo(x,Y(v)):c.moveTo(x,Y(v))});c.stroke();
+ c.strokeStyle='#10b981';c.beginPath();T.val.forEach((p,i)=>{i?c.lineTo(X(p[0]),Y(p[1])):c.moveTo(X(p[0]),Y(p[1]))});c.stroke()}
+function heat(){const c=$('hm').getContext('2d'),b=+$('dxs').value;$('dxl').textContent=b;c.clearRect(0,0,320,192);let mx=.01;
+ const at=(j,k)=>((b*20+j)*12+k)*2;
+ for(let j=0;j<20;j++)for(let k=0;k<12;k++){const i=at(j,k);mx=Math.max(mx,Math.abs(Q[i+1]-Q[i]))}
+ for(let j=0;j<20;j++)for(let k=0;k<12;k++){const i=at(j,k),d=Q[i+1]-Q[i],a=Math.min(1,Math.abs(d)/mx);
+  c.fillStyle=!visits[i/2]?'rgba(128,128,128,.25)':d>0?`rgba(239,68,68,${.15+.85*a})`:`rgba(59,130,246,${.15+.85*a})`;c.fillRect(j*16,(11-k)*16,15,15)}}
+const st=a=>{const s=[...a].sort((x,y)=>x-y),n=s.length;return[a.reduce((x,y)=>x+y,0)/n,(s[(n-1)>>1]+s[n>>1])/2,s[0],s[n-1]]};
+function evalSet(eps,r){const sc=[];let sv=0;for(let k=0;k<200;k++){const x=run(10000+k,eps,false,10000,r);sc.push(x[0]);sv+=x[1]?1:0}return[...st(sc),sv]}
+$('bE').onclick=()=>{$('bE').textContent='Evaluando…';setTimeout(()=>{const a=evalSet(0,Math.random),r=evalSet(1,rng(7));
+ const row=(n,x)=>`<tr><td>${n}</td><td>${x[0].toFixed(1)}</td><td>${x[1]}</td><td>${x[2]}</td><td>${x[3]}</td><td>${(x[4]/2).toFixed(1)}% (${x[4]}/200)</td></tr>`;
+ $('tb').innerHTML='<tr><th>Agente</th><th>Media</th><th>Mediana</th><th>Mín.</th><th>Máx.</th><th>Superv.</th></tr>'+row('Q-Learning (Q-Table actual)',a)+row('Aleatorio (línea base)',r);
+ $('bE').textContent='Evaluar: 200 ep., semillas 10000–10199'},30)};
+$('fi').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const b=await f.arrayBuffer();let arr;
+ if(/\.npy$/i.test(f.name)){const v=new DataView(b),m=v.getUint8(6),hl=m===1?v.getUint16(8,true):v.getUint32(8,true),o=(m===1?10:12),h=new TextDecoder().decode(new Uint8Array(b,o,hl));
+  if(v.getUint8(0)!==0x93||!/<f8/.test(h))throw 0;arr=new Float64Array(b.slice(o+hl))}
+ else arr=Float64Array.from(JSON.parse(new TextDecoder().decode(b)).flat(Infinity));
+ if(arr.length!==7200)throw 0;Q=arr;visits=new Uint32Array(3600);for(let i=0;i<3600;i++)if(Math.abs(Q[2*i]-2)>1e-9||Math.abs(Q[2*i+1]-2)>1e-9)visits[i]=1;
+ T.run=false;SRC='cargada desde '+f.name+' (estados visitados estimados por Q distinto de 2.0).';$('bT').textContent='▶ Entrenar';ui()}catch(x){$('src').textContent='Origen: archivo no válido. Se espera una Q-Table de forma (15, 20, 12, 2) en .npy float64 o .json.'}e.target.value=''};
+$('bT').onclick=()=>{if(T.run){T.run=false;$('bT').textContent='▶ Reanudar';return}
+ if(T.ep>=T.N||T.ep===0){if(T.ep>=T.N)resetAll();T.N=Math.max(500,+$('nIn').value||10000)}
+ T.run=true;$('bT').textContent='⏸ Pausar';tick()};
+$('bR').onclick=resetAll;$('dxs').oninput=heat;
+/* Partida en vivo */
+let G={mode:'agent',over:0,best:0,seed:1000,hold:0,flap:0,wait:0,e:null,o:null};
+const HINT={agent:'El agente juega con su Q-Table actual (política greedy).',human:'Toca el juego o pulsa la barra espaciadora para saltar.',random:'Agente aleatorio: salta al azar con probabilidad 0.5.'};
+function newGame(){G.e=new Env(G.seed++);G.o=G.e.obs();G.over=0;G.hold=G.mode==='human'}
+$('modes').onclick=e=>{const m=e.target.dataset.m;if(!m)return;G.mode=m;G.best=0;[...$('modes').children].forEach(b=>b.classList.toggle('on',b===e.target));$('hint').textContent=HINT[m];newGame()};
+const flap=()=>{if(G.mode!=='human')return;if(G.over)newGame();else G.flap=1};
+$('cv').addEventListener('pointerdown',flap);addEventListener('keydown',e=>{if(e.code==='Space'&&G.mode==='human'){e.preventDefault();flap()}});
+function frame(){for(let k=0;k<+$('spd').value;k++){
+  if(!G.over){if(G.mode==='human'&&G.hold){if(!G.flap)continue;G.hold=0}
+   const a=G.mode==='agent'?greedy(idx(disc(G.o))):G.mode==='random'?(Math.random()<.5?1:0):G.flap;G.flap=0;
+   const[o,,d]=G.e.step(a);G.o=o;if(d){G.over=1;G.wait=50;G.best=Math.max(G.best,G.e.score)}}
+  else if(G.mode!=='human'&&--G.wait<=0)newGame()}
+ draw();$('sc').textContent=G.e.score;$('bs').textContent=Math.max(G.best,G.over?0:G.e.score);requestAnimationFrame(frame)}
+function draw(){const e=G.e,c=$('cv').getContext('2d'),g=c.createLinearGradient(0,0,0,GR);g.addColorStop(0,'#7dd3fc');g.addColorStop(1,'#e0f2fe');c.fillStyle=g;c.fillRect(0,0,W,H);
+ for(const p of e.pipes){const t=p.c-GAP/2,b=p.c+GAP/2;c.fillStyle='#22a559';c.fillRect(p.x,0,PW,t);c.fillRect(p.x,b,PW,GR-b);c.fillStyle='#177a40';c.fillRect(p.x-3,t-16,PW+6,16);c.fillRect(p.x-3,b,PW+6,16)}
+ c.fillStyle='#d9a441';c.fillRect(0,GR,W,H-GR);c.fillStyle='#7bc043';c.fillRect(0,GR,W,10);
+ c.fillStyle='#fbbf24';c.beginPath();c.arc(BX,e.y,BR,0,7);c.fill();c.fillStyle='#fff';c.beginPath();c.arc(BX+4,e.y-3,4,0,7);c.fill();
+ c.fillStyle='#111';c.beginPath();c.arc(BX+5,e.y-3,2,0,7);c.fill();c.fillStyle='#f97316';c.fillRect(BX+8,e.y+1,8,4);
+ c.textAlign='center';c.strokeStyle='#14213d';c.lineWidth=4;c.fillStyle='#fff';c.font='bold 40px system-ui';c.strokeText(e.score,W/2,70);c.fillText(e.score,W/2,70);
+ if(G.over){c.font='bold 26px system-ui';c.strokeText('Game over',W/2,230);c.fillText('Game over',W/2,230)}
+ else if(G.hold){c.font='15px system-ui';c.lineWidth=3;c.strokeText('Salta para empezar',W/2,230);c.fillText('Salta para empezar',W/2,230)}}
+resetAll();newGame();frame();
+</script></body></html>
